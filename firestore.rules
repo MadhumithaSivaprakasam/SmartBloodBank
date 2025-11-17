@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // WARNING: The following rule allows open read/write access to the
+    // database. This is convenient for local development and testing but
+    // is NOT safe for production. Tighten these rules before deploying.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
