@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Blood Bank</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc;
+        }  
+        .blood-type-box {
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        .blood-type-box:hover {
+            border-color: #ef4444;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .progress-bar-container {
+            height: 8px;
+            background-color: #e5e7eb;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            transition: width 0.5s ease;
+            border-radius: 9999px;
+        }
+        .map-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background-color: #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            background-image: url('https://placehold.co/1200x800/d1d5db/4b5563?text=Mock+Map');
+            background-size: cover;
+            background-position: center;
+        }
+        .map-pin {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #ef4444;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+            transform: translate(-50%, -100%);
+            transition: all 0.5s ease;
+            cursor: pointer;
+        }
+        .map-pin::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 10px solid #ef4444;
+            transform: translateX(-50%);
+        }
+        .sos-button {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            border: 1px solid #e2e8f0;
+        }
+        .notification-card {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #fff;
+            padding: 1rem 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            z-index: 1000;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            padding-top: 60px;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        /* Dark mode overrides */
+.dark .card {
+    background: #1f2937;
+    color: #f3f4f6;
+    border-color: #374151;
+}
+.dark .notification-card {
+    background: #1f2937;
+    color: #f3f4f6;
+}
+.dark .modal-content {
+    background: #111827;
+    color: #f3f4f6;
+    border-color: #374151;
+}
+.dark .blood-type-box {
+    background: #374151;
+    border-color: #4b5563;
+}
+.dark .map-container {
+    background-color: #374151;
+}
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center p-4">
+    <div id="app" class="w-full h-full max-w-4xl bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6"></div>
+
+    <div id="notification-container" class="notification-card">
+        <p id="notification-text" class="text-gray-800 text-sm"></p>
+    </div>
+
+    <div id="generic-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="modal-body" class="p-4"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+        // Set log level for debugging
+        setLogLevel('debug');
+
+        // Global variables for Firebase configuration
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4ScRr3OLffwv6NuqI1UEYUyMsT-iqhnk",
+            authDomain: "smart-blood-bank-8c94b.firebaseapp.com",
+            projectId: "smart-blood-bank-8c94b",
+            storageBucket: "smart-blood-bank-8c94b.appspot.com",
+            messagingSenderId: "384571366802",
+            appId: "1:384571366802:web:f4f743dd02d6a82b9e754b",
+            measurementId: "G-1N900NKBZ1"
+        };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Global state variables
+        let currentUser = null;
+        let userId = null;
+        let userRole = null;
+        let appInitialized = false;
+        let unsubscribeListeners = [];
+
+        // Helper function to show a custom modal instead of alert()
+        function showModal(contentHtml) {
+            const modal = document.getElementById('generic-modal');
+            const modalBody = document.getElementById('modal-body');
+            modalBody.innerHTML = contentHtml;
+            modal.style.display = 'block';
+        }
+
+        // Close modal function
+        document.querySelector('.close-button').onclick = function() {
+            document.getElementById('generic-modal').style.display = 'none';
+        }
+        window.onclick = function(event) {
+            const modal = document.getElementById('generic-modal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Notification function
+        function showNotification(message) {
+            const container = document.getElementById('notification-container');
+            const text = document.getElementById('notification-text');
+            text.textContent = message;
+            container.style.display = 'block';
+            setTimeout(() => {
+                container.style.display = 'none';
+            }, 5000);
+        }
+
+        // Get the collection reference for public data
+        function getCollectionRef(collectionName) {
+            // Use only the collection name for local development
+            return collection(db, collectionName);
+        }
+        // --- Core App Rendering Functions ---
+
+        // Renders the login/role selection screen
+        function renderLoginScreen() {
+            const appDiv = document.getElementById('app');
+            appDiv.innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen-full p-4">
+                    <h1 class="text-4xl font-bold text-red-600 mb-2">Smart Blood Bank</h1>
+                    <p class="text-gray-600 mb-8">Welcome! Please select your role to continue.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-lg">
+                        <button id="donor-btn" class="flex flex-col items-center justify-center p-8 bg-red-500 text-white rounded-xl shadow-md transform transition-transform duration-300 hover:scale-105">
+                            <div class="text-6xl mb-2">❤️</div>
+<span class="text-xl font-semibold">I am a Donor</span>
+
+                        </button>
+                        <button id="recipient-btn" class="flex flex-col items-center justify-center p-8 bg-blue-500 text-white rounded-xl shadow-md transform transition-transform duration-300 hover:scale-105">
+                           <div class="text-6xl mb-2">🩹</div>
+<span class="text-xl font-semibold">I am a Recipient</span>
+
+                        </button>
+                        <button id="hospital-btn" class="flex flex-col items-center justify-center p-8 bg-green-500 text-white rounded-xl shadow-md transform transition-transform duration-300 hover:scale-105">
+                            <div class="text-6xl mb-2">🏥</div>
+<span class="text-xl font-semibold">I am a Hospital</span>
+
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('donor-btn').addEventListener('click', () => renderRoleForm('Donor'));
+            document.getElementById('recipient-btn').addEventListener('click', () => renderRoleForm('Recipient'));
+            document.getElementById('hospital-btn').addEventListener('click', () => renderRoleForm('Hospital'));
+        }
+
+        // Renders the login/signup form for a specific role
+        function renderRoleForm(role) {
+            const appDiv = document.getElementById('app');
+            let passwordPrompt = 'Password (6+ characters)';
+            let namePrompt = 'Your Name';
+            if (role === 'Hospital') {
+                namePrompt = 'Hospital Name';
+            }
+            appDiv.innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen-full p-4">
+                    <div class="card w-full max-w-md p-8">
+                        <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">${role} Login / Sign Up</h2>
+                        <form id="role-form">
+                            <div class="mb-4">
+                                <label for="name" class="block text-gray-700 font-semibold mb-2">${namePrompt}</label>
+                                <input type="text" id="name" name="name" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-400" required>
+                            </div>
+                            ${role === 'Recipient' ? `
+<div class="mb-4">
+  <label for="age" class="block text-gray-700 font-semibold mb-2">Age</label>
+  <input type="number" id="age" name="age" min="0" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400" required>
+</div>
+` : ""}
+
+                            ${role === 'Donor' ? `
+<div class="mb-4">
+  <label for="age" class="block text-gray-700 font-semibold mb-2">Age</label>
+  <input type="number" id="age" name="age" min="18" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-400" required>
+</div>
+` : ""}
+
+                            ${role === 'Donor' ? `
+                            <div class="mb-4">
+                                <label for="blood-type" class="block text-gray-700 font-semibold mb-2">Blood Group</label>
+                                <select id="blood-type" name="blood-type" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-400" required>
+                                    <option value="">Select Blood Group</option>
+                                    <option value="A+">A+</option>
+                                    <option value="A-">A-</option>
+                                    <option value="B+">B+</option>
+                                    <option value="B-">B-</option>
+                                    <option value="O+">O+</option>
+                                    <option value="O-">O-</option>
+                                    <option value="AB+">AB+</option>
+                                    <option value="AB-">AB-</option>
+                                </select>
+                            </div>
+                            ` : ''}
+                            <div class="mb-6">
+                                <label for="password" class="block text-gray-700 font-semibold mb-2">${passwordPrompt}</label>
+                                <input type="password" id="password" name="password" minlength="6" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-400" required>
+                            </div>
+                            <button type="submit" class="w-full bg-red-500 text-white py-3 rounded-md font-semibold hover:bg-red-600 transition-colors">Login / Sign Up</button>
+                        </form>
+                        <button id="back-to-roles" class="w-full mt-4 text-gray-600 hover:text-red-500 transition-colors">Back to Role Selection</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('role-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('name').value;
+                const password = document.getElementById('password').value;
+                await handleRoleLogin(role, name, password);
+            });
+            document.getElementById('back-to-roles').addEventListener('click', renderLoginScreen);
+        }
+
+        // Renders the main dashboard for the current user's role
+        function renderDashboard() {
+            const appDiv = document.getElementById('app');
+            appDiv.innerHTML = `
+                <div class="flex flex-col lg:flex-row h-full">
+                    <div class="w-full lg:w-1/4 p-4 bg-gray-50 border-r border-gray-200 rounded-l-xl">
+                        <div class="flex items-center space-x-2 mb-6">
+                            <span class="text-2xl font-bold text-red-600">Smart Blood Bank</span>
+                        </div>
+                        <ul class="space-y-2">
+                            <li><button class="nav-link w-full text-left p-3 rounded-md text-gray-700 hover:bg-gray-200 transition-colors active-link" data-page="home">Dashboard</button></li>
+                            <li><button class="nav-link w-full text-left p-3 rounded-md text-gray-700 hover:bg-gray-200 transition-colors" data-page="maps">Maps</button></li>
+                            <li><button class="nav-link w-full text-left p-3 rounded-md text-gray-700 hover:bg-gray-200 transition-colors" data-page="stock">Blood Stock</button></li>
+                            <li><button class="nav-link w-full text-left p-3 rounded-md text-gray-700 hover:bg-gray-200 transition-colors" data-page="profile">Profile</button></li>
+                            <li><button class="nav-link w-full text-left p-3 rounded-md text-gray-700 hover:bg-gray-200 transition-colors" id="logout-btn">Log Out</button></li>
+                        </ul>
+                        <div class="mt-6 p-3 bg-white rounded-md text-sm text-gray-600 shadow-sm">
+                            <p class="font-semibold text-gray-800">Your User ID:</p>
+                            <p class="break-all" id="user-id-display">${userId}</p>
+                            <p class="mt-2 text-xs">Share this ID for collaboration.</p>
+                        </div>
+                    </div>
+                    <div id="main-content" class="w-full lg:w-3/4 p-6 overflow-y-auto">
+                        </div>
+                </div>
+            `;
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active-link', 'bg-gray-200'));
+                    e.currentTarget.classList.add('active-link', 'bg-gray-200');
+                    renderPage(e.currentTarget.dataset.page);
+                });
+            });
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            renderPage('home');
+        }
+
+        // Renders the specific page within the dashboard
+        function renderPage(page) {
+            const mainContent = document.getElementById('main-content');
+            // Clear any old listeners before rendering a new page
+            unsubscribeListeners.forEach(unsubscribe => unsubscribe());
+            unsubscribeListeners = [];
+            
+            switch (page) {
+                case 'home':
+                    if (userRole === 'Donor') renderDonorDashboard(mainContent);
+                    else if (userRole === 'Recipient') renderRecipientDashboard(mainContent);
+                    else if (userRole === 'Hospital') renderHospitalDashboard(mainContent);
+                    break;
+                case 'maps':
+                    renderMapsPage(mainContent);
+                    break;
+                case 'stock':
+                    renderBloodStockPage(mainContent);
+                    break;
+                case 'profile':
+                    renderProfilePage(mainContent);
+                    break;
+            }
+        }
+
+        // --- Role-Specific Dashboard Renderers ---
+
+        async function renderRecipientDashboard(container) {
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Recipient Dashboard</h2>
+                <div class="card mb-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Find Blood</h3>
+                    <div class="flex flex-col md:flex-row gap-4 mb-4">
+                        <select id="blood-type-select" class="flex-1 px-4 py-2 border rounded-md">
+                            <option value="">Select Blood Type</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                        </select>
+                        <input type="text" id="recipient-location" placeholder="Enter your location (e.g. Cityville)" class="flex-1 px-4 py-2 border rounded-md" required value="${currentUser.location || ''}">
+                        <button id="search-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">Search</button>
+                    </div>
+                    <button id="sos-btn" class="sos-button w-full bg-red-600 text-white text-lg font-bold py-4 rounded-md shadow-lg hover:bg-red-700 transition-colors">
+                        Emergency SOS
+                    </button>
+                </div>
+
+                <div class="card mb-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Nearby Resources</h3>
+                    <div id="nearby-resources" class="space-y-4">
+                        <p class="text-gray-500">Search for blood to see nearby donors and hospitals.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Your Requests</h3>
+                    <div id="request-list" class="space-y-4">
+                        <p class="text-gray-500">You have no active requests.</p>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('search-btn').addEventListener('click', async () => {
+                const bloodType = document.getElementById('blood-type-select').value;
+                const location = document.getElementById('recipient-location').value;
+                if (!bloodType) {
+                    showModal('Please select a blood type.');
+                    return;
+                }
+                if (!location) {
+                    showModal('Please enter your location.');
+                    return;
+                }
+                showModal(`<p class="text-gray-800">Searching for ${bloodType} blood near ${location}...</p>`);
+                
+                // Placeholder for real search logic
+                const nearbyContainer = document.getElementById('nearby-resources');
+                nearbyContainer.innerHTML = `
+                    <div class="p-4 bg-gray-100 rounded-md">
+                        <p class="font-semibold text-gray-800">Search Results for <span class="text-red-500">${bloodType}</span> near <span class="text-blue-500">${location}</span></p>
+                        <p class="text-sm text-gray-600 mt-1">Found 2 potential donors and 3 hospitals with available stock.</p>
+                        <button id="send-request-btn" class="mt-2 bg-red-500 text-white px-4 py-2 rounded-md text-sm hover:bg-red-600 transition-colors">Send Request to Donors</button>
+                    </div>
+                `;
+                document.getElementById('send-request-btn').addEventListener('click', () => sendRequest(bloodType, location));
+            });
+
+            document.getElementById('sos-btn').addEventListener('click', async () => {
+                showModal(`<p class="text-gray-800">Sending out an emergency SOS request for any blood type. Donors nearby will be notified.</p>`);
+                await sendSOSRequest();
+            });
+
+            // Listen for updates on my requests
+            const q = query(getCollectionRef('requests'), where('recipientId', '==', userId));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const requestList = document.getElementById('request-list');
+                if (snapshot.empty) {
+                    requestList.innerHTML = `<p class="text-gray-500">You have no active requests.</p>`;
+                    return;
+                }
+                requestList.innerHTML = '';
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const statusColor = data.status === 'accepted' ? 'text-green-600' : 'text-orange-500';
+                    const statusText = data.status === 'accepted' ? 'Accepted' : 'Pending...';
+                    requestList.innerHTML += `
+                        <div class="p-4 bg-gray-100 rounded-md">
+                            <p class="font-semibold text-gray-800">Request for <span class="text-red-500">${data.bloodType}</span></p>
+                            <p class="text-sm text-gray-600 mt-1">Status: <span class="${statusColor}">${statusText}</span></p>
+                            ${data.donorName ? `<p class="text-sm text-gray-600 mt-1">Accepted by: ${data.donorName}</p>` : ''}
+                        </div>
+                    `;
+                    // --- Notification logic ---
+                    if (data.status === 'accepted' && !data.notified) {
+                        showNotification(`Your request for ${data.bloodType} has been accepted by ${data.donorName || 'a hospital'}!`);
+                        // Mark as notified to avoid repeat notifications
+                        const requestDocRef = doc(getCollectionRef('requests'), docSnap.id);
+                        updateDoc(requestDocRef, { notified: true });
+                    }
+                });
+            });
+            unsubscribeListeners.push(unsubscribe);
+        }
+
+        async function renderDonorDashboard(container) {
+            // Fetch the latest user data before rendering
+            const userDocRef = doc(getCollectionRef('users'), userId);
+            const userDocSnap = await getDoc(userDocRef);
+            if(userDocSnap.exists()) {
+                currentUser = userDocSnap.data();
+            }
+
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Donor Dashboard</h2>
+                <div class="card mb-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">New Requests for ${currentUser.bloodType}</h3>
+                    <div id="donor-requests" class="space-y-4">
+                        <p class="text-gray-500">No new requests at the moment.</p>
+                    </div>
+                </div>
+                <div class="card mb-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Log a Donation</h3>
+                    <form id="donation-form" class="space-y-4">
+                        <div>
+                            <label for="donation-hospital" class="block text-gray-700 font-semibold mb-1">Hospital Name</label>
+                            <input type="text" id="donation-hospital" class="w-full px-4 py-2 border rounded-md" placeholder="e.g., City General Hospital" required>
+                        </div>
+                        <div>
+                            <label for="donation-location" class="block text-gray-700 font-semibold mb-1">Location (City)</label>
+                            <input type="text" id="donation-location" class="w-full px-4 py-2 border rounded-md" placeholder="e.g., Springfield" required value="${currentUser.location || ''}">
+                        </div>
+                        <div>
+                            <label for="donation-blood-type" class="block text-gray-700 font-semibold mb-1">Blood Type Donated</label>
+                            <select id="donation-blood-type" class="w-full px-4 py-2 border rounded-md">
+                                <option value="${currentUser.bloodType || 'A+'}">${currentUser.bloodType || 'A+'}</option>
+                                <option value="A+">A+</option>
+                                <option value="A-">A-</option>
+                                <option value="B+">B+</option>
+                                <option value="B-">B-</option>
+                                <option value="O+">O+</option>
+                                <option value="O-">O-</option>
+                                <option value="AB+">AB+</option>
+                                <option value="AB-">AB-</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="donation-units" class="block text-gray-700 font-semibold mb-1">Units Donated</label>
+                            <input type="number" id="donation-units" class="w-full px-4 py-2 border rounded-md" value="1" min="1" required>
+                        </div>
+                        <button type="submit" class="w-full bg-red-500 text-white py-2 rounded-md font-semibold hover:bg-red-600 transition-colors">Submit Donation</button>
+                    </form>
+                </div>
+            `;
+            document.getElementById('donation-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await logDonation();
+            });
+
+            // Listen for requests to this donor
+                const q = query(getCollectionRef('requests'), where('bloodType', '==', currentUser.bloodType || 'A+'), where('status', '==', 'pending'));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const requestsDiv = document.getElementById('donor-requests');
+                if (snapshot.empty) {
+                    requestsDiv.innerHTML = `<p class="text-gray-500">No new requests at the moment.</p>`;
+                    return;
+                }
+                requestsDiv.innerHTML = '';
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    requestsDiv.innerHTML += `
+                        <div class="p-4 bg-red-100 rounded-md border border-red-200">
+                            <p class="font-semibold text-red-700">Request for ${data.bloodType} blood from ${data.recipientName}</p>
+                            <p class="text-sm text-gray-600">Location: ${data.location || 'Unknown'}</p>
+                            <div class="flex space-x-2 mt-2">
+                                <button class="bg-green-500 text-white px-3 py-1 rounded-md text-sm hover:bg-green-600 transition-colors accept-request-btn" data-id="${docSnap.id}">Accept</button>
+                                <button class="bg-gray-500 text-white px-3 py-1 rounded-md text-sm hover:bg-gray-600 transition-colors reject-request-btn" data-id="${docSnap.id}">Decline</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                document.querySelectorAll('.accept-request-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => respondToRequest(e.target.dataset.id, 'accepted'));
+                });
+                document.querySelectorAll('.reject-request-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => respondToRequest(e.target.dataset.id, 'rejected'));
+                });
+            });
+            unsubscribeListeners.push(unsubscribe);
+        }
+
+        async function renderHospitalDashboard(container) {
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Hospital Dashboard</h2>
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Update Blood Stock (Manual Override)</h3>
+                    <form id="stock-update-form" class="space-y-4">
+                        <div>
+                            <label for="update-blood-type" class="block text-gray-700 font-semibold mb-1">Blood Type</label>
+                            <select id="update-blood-type" class="w-full px-4 py-2 border rounded-md">
+                                <option value="A+">A+</option>
+                                <option value="A-">A-</option>
+                                <option value="B+">B+</option>
+                                <option value="B-">B-</option>
+                                <option value="O+">O+</option>
+                                <option value="O-">O-</option>
+                                <option value="AB+">AB+</option>
+                                <option value="AB-">AB-</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="update-units" class="block text-gray-700 font-semibold mb-1">Units Available</label>
+                            <input type="number" id="update-units" class="w-full px-4 py-2 border rounded-md" value="0" min="0" required>
+                        </div>
+                        <button type="submit" class="w-full bg-red-500 text-white py-2 rounded-md font-semibold hover:bg-red-600 transition-colors">Update Stock</button>
+                    </form>
+                </div>
+            `;
+            document.getElementById('stock-update-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await updateHospitalStock();
+            });
+        }
+
+        // --- Shared Page Renderers ---
+
+        async function renderMapsPage(container) {
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Maps</h2>
+                <div class="map-container relative" id="map-container"></div>
+                <div class="card mt-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">Legend</h3>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-red-500"></div>
+                            <span>Donor</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 rounded-full bg-green-500"></div>
+                            <span>Hospital</span>
+                        </div>
+                    </div>
+                    <p class="mt-4 text-gray-600">Pins show real donors and hospitals from the database. (Locations are text-based for demo.)</p>
+                </div>
+            `;
+        
+            const mapContainer = document.getElementById('map-container');
+            mapContainer.innerHTML = '';
+        
+            // Fetch donors
+            const donorsSnapshot = await getDocs(query(getCollectionRef('users'), where('role', '==', 'Donor')));
+            donorsSnapshot.forEach(docSnap => {
+                const donor = docSnap.data();
+                // For demo, randomize position.
+                const top = Math.random() * 80 + 10;
+                const left = Math.random() * 80 + 10;
+                const pin = document.createElement('div');
+                pin.className = 'map-pin';
+                pin.style.top = `${top}%`;
+                pin.style.left = `${left}%`;
+                pin.style.backgroundColor = '#ef4444'; // red for donor
+                pin.title = `Donor: ${donor.name}\nType: ${donor.bloodType || 'Unknown'}\nLocation: ${donor.location || 'Unknown'}`;
+                mapContainer.appendChild(pin);
+            });
+        
+            // Fetch hospitals
+            const hospitalsSnapshot = await getDocs(getCollectionRef('hospitals'));
+            hospitalsSnapshot.forEach(docSnap => {
+                const hospital = docSnap.data();
+                // For demo, randomize position.
+                const top = Math.random() * 80 + 10;
+                const left = Math.random() * 80 + 10;
+                const pin = document.createElement('div');
+                pin.className = 'map-pin';
+                pin.style.top = `${top}%`;
+                pin.style.left = `${left}%`;
+                pin.style.backgroundColor = '#22c55e'; // green for hospital
+                pin.title = `Hospital: ${hospital.hospitalName || 'Unknown'}\nLocation: ${hospital.location || 'Unknown'}`;
+                mapContainer.appendChild(pin);
+            });
+        }
+
+        async function renderBloodStockPage(container) {
+            const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Blood Stock Availability</h2>
+                <p class="text-gray-600 mb-6">Real-time inventory of blood types across all registered hospitals.</p>
+                <div id="blood-stock-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            `;
+
+            const stockGrid = document.getElementById('blood-stock-grid');
+            bloodTypes.forEach(type => {
+                const card = document.createElement('div');
+                card.className = 'blood-type-box bg-white rounded-xl shadow-md p-6';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-2xl font-bold">${type}</h3>
+                        <span class="text-gray-500 text-sm">Units: <span id="${type.replace('+', 'plus').replace('-', 'minus')}-units">0</span></span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div id="${type.replace('+', 'plus').replace('-', 'minus')}-bar" class="progress-bar bg-red-500" style="width: 0%;"></div>
+                    </div>
+                `;
+                stockGrid.appendChild(card);
+            });
+
+            // Listen for stock updates from all hospitals
+            const q = getCollectionRef('hospitals');
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const totalStock = {};
+                bloodTypes.forEach(type => totalStock[type] = 0);
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (data.stock) {
+                        for (const type in data.stock) {
+                            if (bloodTypes.includes(type)) {
+                                totalStock[type] += data.stock[type];
+                            }
+                        }
+                    }
+                });
+
+                // Update the UI
+                const maxUnits = 20; // A base value for progress bar calculation
+                for (const type in totalStock) {
+                    const units = totalStock[type];
+                    const percentage = Math.min(100, (units / maxUnits) * 100);
+                    const barId = `${type.replace('+', 'plus').replace('-', 'minus')}-bar`;
+                    const unitsId = `${type.replace('+', 'plus').replace('-', 'minus')}-units`;
+                    const bar = document.getElementById(barId);
+                    const unitSpan = document.getElementById(unitsId);
+                    if (bar) {
+                        bar.style.width = `${percentage}%`;
+                        // Update color based on stock level
+                        if (percentage > 50) {
+                            bar.classList.remove('bg-red-500', 'bg-yellow-500');
+                            bar.classList.add('bg-green-500');
+                        } else if (percentage > 20) {
+                            bar.classList.remove('bg-red-500', 'bg-green-500');
+                            bar.classList.add('bg-yellow-500');
+                        } else {
+                            bar.classList.remove('bg-green-500', 'bg-yellow-500');
+                            bar.classList.add('bg-red-500');
+                        }
+                    }
+                    if (unitSpan) {
+                        unitSpan.textContent = units;
+                    }
+                }
+            });
+            unsubscribeListeners.push(unsubscribe);
+        }
+
+        async function renderProfilePage(container) {
+            if (!currentUser) {
+                container.innerHTML = '<p class="text-center text-gray-500">Loading profile...</p>';
+                return;
+            }
+
+            // Re-fetch to get the latest donation count
+            const userDocRef = doc(getCollectionRef('users'), userId);
+            const userDocSnap = await getDoc(userDocRef);
+            if(userDocSnap.exists()) {
+                currentUser = userDocSnap.data();
+            }
+
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Profile</h2>
+                <div class="card">
+                    <div class="flex items-center space-x-4 mb-4">
+                        <div class="w-16 h-16 bg-red-200 rounded-full flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-red-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                        </div> 
+                        <div>
+                            <h3 class="text-2xl font-semibold">${currentUser.name}</h3>
+                            <p class="text-gray-500 text-sm">Role: ${currentUser.role}</p>
+                            <p class="text-gray-500 text-sm break-all">User ID: ${userId}</p>
+                        </div>
+                    </div>
+                    <div class="border-t border-gray-200 pt-4 mt-4 space-y-2">
+                        <p><strong>Blood Type:</strong> <span class="text-red-500">${currentUser.bloodType || 'N/A'}</span></p>
+                        <p><strong>Location:</strong> ${currentUser.location || 'N/A'}</p>
+                        ${currentUser.unitsDonated ? `<p><strong>Units Donated:</strong> ${currentUser.unitsDonated}</p>` : ''}
+                        ${currentUser.hospitalLocation ? `<p><strong>Last Donation Hospital:</strong> ${currentUser.hospitalLocation}</p>` : ''}
+                        ${currentUser.donatedAt ? `<p><strong>Last Donated:</strong> ${new Date(currentUser.donatedAt.seconds * 1000).toLocaleDateString()}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Firebase Interaction Logic ---
+
+        async function handleRoleLogin(role, name, password) {
+            try {
+                // Query for a user with the given name and password
+                const usersRef = getCollectionRef('users');
+                const q = query(usersRef, where('name', '==', name), where('password', '==', password));
+                const querySnapshot = await getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    // User found, get the first document
+                    const userDoc = querySnapshot.docs[0];
+                    const data = userDoc.data();
+                    if (data.role === role) {
+                        currentUser = data;
+                        userRole = role;
+                        userId = userDoc.id; // Use the existing document ID as the user ID
+                        showNotification(`Welcome back, ${currentUser.name}!`);
+                        renderDashboard();
+                        return;
+                    } else {
+                        showModal('Invalid role for these credentials. Please try again.');
+                        return;
+                    }
+                }
+
+                // If no user found, check if a user with that name already exists
+                const nameCheckQ = query(usersRef, where('name', '==', name));
+                const nameCheckSnapshot = await getDocs(nameCheckQ);
+                if (!nameCheckSnapshot.empty) {
+                    showModal('A user with this name already exists. Please use a different name or try logging in with the correct password.');
+                    return;
+                }
+
+                // New user registration
+                let bloodType = null;
+                if (role === 'Donor') {
+                    bloodType = document.getElementById('blood-type').value;
+                    if (!bloodType) {
+                        showModal('Please select your blood group.');
+                        return;
+                    }
+                }
+                const newUser = {
+                    name,
+                    password,
+                    role,
+                    createdAt: new Date(),
+                    bloodType: bloodType,
+                    location: 'Cityville', // Default location
+                    unitsDonated: 0
+                };
+                
+                const docRef = await addDoc(usersRef, newUser);
+                currentUser = newUser;
+                userRole = role;
+                userId = docRef.id;
+
+                if (role === 'Hospital') {
+                    const hospitalDocRef = doc(getCollectionRef('hospitals'), userId);
+                    await setDoc(hospitalDocRef, {
+                        hospitalName: name,
+                        stock: {},
+                        location: newUser.location,
+                        userId
+                    });
+                }
+
+                showNotification(`Welcome, ${name}! Your account has been created.`);
+                renderDashboard();
+            } catch (error) {
+                console.error("Error during login/signup: ", error);
+                showModal('An error occurred. Please check the console for details.');
+            }
+        }
+
+        async function updateHospitalStock() {
+            const bloodType = document.getElementById('update-blood-type').value;
+            const units = parseInt(document.getElementById('update-units').value);
+            if (!currentUser || currentUser.role !== 'Hospital') return;
+
+            try {
+                const hospitalDocRef = doc(getCollectionRef('hospitals'), userId);
+                const docSnap = await getDoc(hospitalDocRef);
+                const currentStock = docSnap.data().stock || {};
+                currentStock[bloodType] = units;
+
+                await updateDoc(hospitalDocRef, {
+                    stock: currentStock
+                });
+                showNotification(`Updated ${bloodType} stock to ${units} units.`);
+            } catch (error) {
+                console.error("Error updating stock: ", error);
+                showModal('Failed to update stock. Please try again.');
+            }
+        }
+        
+        // RECTIFIED FUNCTION FOR AUTOMATIC STOCK UPDATE
+        async function logDonation() {
+            if (!currentUser || currentUser.role !== 'Donor') return;
+            const hospitalName = document.getElementById('donation-hospital').value;
+            const location = document.getElementById('donation-location').value;
+            const bloodType = document.getElementById('donation-blood-type').value;
+            const units = parseInt(document.getElementById('donation-units').value);
+
+            try {
+                // 1. Log the donation
+                await addDoc(getCollectionRef('donations'), {
+                    donorId: userId,
+                    donorName: currentUser.name,
+                    bloodType: bloodType,
+                    hospital: hospitalName,
+                    location: location,
+                    units: units,
+                    timestamp: new Date()
+                });
+
+                let stockUpdated = false;
+                // 2. Find the Hospital's User ID (to get its Hospital Doc ID)
+                const hospitalQuery = query(
+                    getCollectionRef('users'), 
+                    where('name', '==', hospitalName), 
+                    where('role', '==', 'Hospital')
+                );
+                const hospitalSnapshot = await getDocs(hospitalQuery);
+
+                if (!hospitalSnapshot.empty) {
+                    const hospitalId = hospitalSnapshot.docs[0].id;
+                    
+                    // 3. Update Hospital Stock
+                    const hospitalDocRef = doc(getCollectionRef('hospitals'), hospitalId);
+                    const docSnap = await getDoc(hospitalDocRef);
+
+                    if (docSnap.exists()) {
+                        const currentStock = docSnap.data().stock || {};
+                        
+                        // Increment the stock for the donated blood type
+                        const currentUnits = currentStock[bloodType] || 0;
+                        currentStock[bloodType] = currentUnits + units;
+
+                        await updateDoc(hospitalDocRef, {
+                            stock: currentStock,
+                            location: location // Update hospital location if provided by donor
+                        });
+                        stockUpdated = true;
+                    }
+                }
+                
+                // 4. Update donor profile with last donation details
+                const donorDocRef = doc(getCollectionRef('users'), userId);
+                const donorUpdate = {
+                    unitsDonated: (currentUser.unitsDonated || 0) + units,
+                    hospitalLocation: hospitalName,
+                    location: location, // Update donor's current location
+                    donatedAt: new Date()
+                };
+                await updateDoc(donorDocRef, donorUpdate);
+                
+                // Update local currentUser state
+                currentUser.unitsDonated = donorUpdate.unitsDonated;
+                currentUser.hospitalLocation = donorUpdate.hospitalLocation;
+                currentUser.donatedAt = donorUpdate.donatedAt;
+                currentUser.location = donorUpdate.location;
+
+                showNotification('Donation successfully logged!' + (stockUpdated ? ' Hospital stock updated automatically.' : ' Hospital not found for automatic update.'));
+                // Re-render dashboard to show updated units donated on profile
+                renderPage('home'); 
+                
+            } catch (error) {
+                console.error("Error logging donation: ", error);
+                showModal('Failed to log donation. Please try again.');
+            }
+        }
+
+        async function sendSOSRequest() {
+            if (!currentUser) return;
+            await addDoc(getCollectionRef('requests'), {
+                recipientId: userId,
+                recipientName: currentUser.name,
+                bloodType: 'Emergency',
+                location: currentUser.location,
+                status: 'pending',
+                timestamp: new Date()
+            });
+            showNotification('Emergency SOS request sent. Donors are being notified.');
+        }
+
+        async function sendRequest(bloodType) {
+            if (!currentUser) return;
+            await addDoc(getCollectionRef('requests'), {
+                recipientId: userId,
+                recipientName: currentUser.name,
+                bloodType: bloodType,
+                location: currentUser.location,
+                status: 'pending',
+                timestamp: new Date()
+            });
+            showNotification(`Request for ${bloodType} sent!`);
+        }
+
+        async function respondToRequest(requestId, response) {
+            try {
+                const requestDocRef = doc(getCollectionRef('requests'), requestId);
+                await updateDoc(requestDocRef, {
+                    status: response,
+                    donorId: userId,
+                    donorName: currentUser.name
+                });
+                showNotification(`Request ${response}. Thank you!`);
+            } catch (error) {
+                console.error("Error responding to request: ", error);
+                showModal('Failed to respond. Please try again.');
+            }
+        }
+
+        async function handleLogout() {
+
+            try {
+                // Clear all active listeners
+                unsubscribeListeners.forEach(unsubscribe => unsubscribe());
+                unsubscribeListeners = [];
+
+                if (auth.currentUser) {
+                    await auth.signOut();
+                }
+                
+                currentUser = null;
+                userRole = null;
+                showNotification('Logged out successfully.');
+                renderLoginScreen();
+            } catch (error) {
+                console.error("Error logging out: ", error);
+            }
+        }
+
+        // --- Initial App Load and Authentication (FIXED TO USE DOMContentLoaded) ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if we are in the hosted environment
+            if (initialAuthToken) {
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        const userDocRef = doc(getCollectionRef('users'), userId);
+                        const userDocSnap = await getDoc(userDocRef);
+                        if (userDocSnap.exists()) {
+                            currentUser = userDocSnap.data();
+                            userRole = currentUser.role;
+                            renderDashboard();
+                        } else {
+                            // User exists in auth but not in our database, render login
+                            renderLoginScreen();
+                        }
+                    } else {
+                        // No user signed in, sign in with custom token
+                        try {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } catch (error) {
+                            console.error("Authentication error: ", error);
+                            showModal('Authentication failed. Please try again later.');
+                        }
+                    }
+                });
+            } else {
+                // This block is for local development/sandboxes to bypass authentication
+                renderLoginScreen();
+            }
+        });
+    </script>
+</body>
+</html>
